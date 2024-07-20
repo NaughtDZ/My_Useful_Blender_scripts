@@ -1,3 +1,6 @@
+#脚本的形态键转换局限，源于此脚本用于KKBP导出FBX后经由Unity转换VRM到PMX格式的mmd模型
+#正在尝试制作第二种脚本用于直接将KKBP导入的模型转换成mmd可用模型
+
 import bpy
 
 def mouth_a(obj):
