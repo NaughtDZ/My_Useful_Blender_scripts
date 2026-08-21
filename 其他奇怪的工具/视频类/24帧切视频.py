@@ -317,7 +317,7 @@ class VideoProcessorGUI:
                 '-i', input_path,
                 '-filter:v', f'setpts=PTS*{speed_ratio:.6f}',
                 '-an',                     # 移除音频
-                '-c:v', 'libx264',
+                '-c:v', 'h264_nvenc',
                 '-crf', '19',
                 '-preset', 'medium',
                 '-y',
