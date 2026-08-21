@@ -302,86 +302,52 @@ class VideoProcessorGUI:
             self.progress.stop()
     
     def adjust_fps(self, input_path, output_path, current_fps, target_fps):
-        """
-        分两步调整帧率，避免filter_complex中同时处理视频和级联atempo导致的崩溃。
-        步骤：
-          1. 先调整视频速度（静音），输出临时视频文件
-          2. 再调整音频速度，输出临时音频文件
-          3. 合并视频和音频
-        """
         speed_ratio = current_fps / target_fps
-        audio_speed = 1 / speed_ratio
-        self.log(f"变速比: {speed_ratio:.4f}, 音频变速: {audio_speed:.4f}")
-        
-        # 临时文件
-        base = Path(input_path).stem
-        temp_video = f"{base}_temp_video.mp4"
-        temp_audio = f"{base}_temp_audio.aac"
+        self.log(f"变速比: {speed_ratio:.4f} (仅调整视频速度，音频保持原始速度不变)")
+        self.log("注意: 音频未变速，可能导致音画不同步，请后期自行处理音频")
+    
+        temp_video = "temp_video_speed.mp4"
+        temp_audio = "temp_audio_original.aac"
         
         try:
-            # 1. 处理视频（静音）
+            # 1. 处理视频（变速）
             self.log("步骤1/3: 调整视频速度...")
             cmd_video = [
                 'ffmpeg',
                 '-i', input_path,
                 '-filter:v', f'setpts=PTS*{speed_ratio:.6f}',
-                '-an',  # 去除音频
+                '-an',                     # 移除音频
                 '-c:v', 'libx264',
                 '-crf', '19',
                 '-preset', 'medium',
-                '-fps_mode', 'vfr',
                 '-y',
                 temp_video
             ]
-            self.log(f"命令: {' '.join(cmd_video)}")
+            self.log(f"视频命令: {' '.join(cmd_video)}")
             result = subprocess.run(cmd_video, capture_output=True, text=True)
             if result.returncode != 0:
                 self.log("视频处理错误:")
                 self.log(result.stderr)
                 raise subprocess.CalledProcessError(result.returncode, cmd_video, result.stderr)
             
-            # 2. 处理音频
-            self.log("步骤2/3: 调整音频速度...")
-            # 构建 atempo 链（用逗号连接）
-            if audio_speed < 0.5:
-                speeds = []
-                remaining = audio_speed
-                while remaining < 0.5:
-                    speeds.append(0.5)
-                    remaining /= 0.5
-                if abs(remaining - 1.0) > 0.0001:
-                    speeds.append(remaining)
-                atempo_chain = ",".join([f"atempo={s:.6f}" for s in speeds])
-            elif audio_speed > 2.0:
-                speeds = []
-                remaining = audio_speed
-                while remaining > 2.0:
-                    speeds.append(2.0)
-                    remaining /= 2.0
-                if abs(remaining - 1.0) > 0.0001:
-                    speeds.append(remaining)
-                atempo_chain = ",".join([f"atempo={s:.6f}" for s in speeds])
-            else:
-                atempo_chain = f"atempo={audio_speed:.6f}"
-            
+            # 2. 提取原始音频（不变速）
+            self.log("步骤2/3: 提取原始音频...")
             cmd_audio = [
                 'ffmpeg',
                 '-i', input_path,
-                '-filter:a', atempo_chain,
-                '-vn',  # 去除视频
-                '-c:a', 'aac',
-                '-b:a', '192k',
+                '-vn',                     # 移除视频
+                '-c:a', 'copy',            # 直接复制，不重编码
                 '-y',
                 temp_audio
             ]
-            self.log(f"命令: {' '.join(cmd_audio)}")
+            self.log(f"音频命令: {' '.join(cmd_audio)}")
             result = subprocess.run(cmd_audio, capture_output=True, text=True)
             if result.returncode != 0:
-                self.log("音频处理错误:")
+                self.log("音频提取错误:")
                 self.log(result.stderr)
                 raise subprocess.CalledProcessError(result.returncode, cmd_audio, result.stderr)
             
-            # 3. 合并
+            # 3. 合并（视频变速，音频原速）
             self.log("步骤3/3: 合并视频和音频...")
             cmd_merge = [
                 'ffmpeg',
@@ -389,17 +355,19 @@ class VideoProcessorGUI:
                 '-i', temp_audio,
                 '-c:v', 'copy',
                 '-c:a', 'copy',
+                '-map', '0:v',
+                '-map', '1:a',
                 '-y',
                 output_path
             ]
-            self.log(f"命令: {' '.join(cmd_merge)}")
+            self.log(f"合并命令: {' '.join(cmd_merge)}")
             result = subprocess.run(cmd_merge, capture_output=True, text=True)
             if result.returncode != 0:
                 self.log("合并错误:")
                 self.log(result.stderr)
                 raise subprocess.CalledProcessError(result.returncode, cmd_merge, result.stderr)
             
-            self.log("帧率调整成功")
+            self.log("帧率调整完成（音频未变速，请注意音画不同步）")
             return output_path
             
         finally:
